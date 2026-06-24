@@ -328,12 +328,14 @@ bot.help(async (ctx) => {
 
   if (admin) {
     t += '\n\uD83D\uDD11 *Perintah Admin:*\n';
-    t += '/laporan        \u2014 Ringkasan semua pengawal\n';
-    t += '/laporan [NAMA] \u2014 Detail rekap pengawal\n';
-    t += '/detail [NAMA]  \u2014 Detail lunas & belum lunas\n';
-    t += '/rekap_semua    \u2014 Semua data belum lunas\n';
-    t += '/lunas [no]     \u2014 Tandai baris jadi LUNAS\n';
-    t += '/refresh        \u2014 Refresh cache (update data)\n';
+    t += '/laporan            \u2014 Ringkasan semua pengawal\n';
+    t += '/laporan [NAMA]     \u2014 Detail rekap pengawal\n';
+    t += '/detail [NAMA]      \u2014 Detail lunas & belum lunas\n';
+    t += '/lunas_semua [NAMA] \u2014 Lunasin semua milik pengawal\n';
+    t += '/cekplat [PLAT]     \u2014 Riwayat lengkap suatu plat\n';
+    t += '/rekap_semua        \u2014 Semua data belum lunas\n';
+    t += '/lunas [no]         \u2014 Tandai baris jadi LUNAS\n';
+    t += '/refresh            \u2014 Refresh cache (update data)\n';
   }
 
   t += '\n' + DIV + '\n';
@@ -395,6 +397,11 @@ bot.command('laporan', async (ctx) => {
       t += '    \uD83D\uDCC5 ' + shortDate(r.d[0]);
       if (!ok) t += '  \u2192 /lunas ' + r.no;
       t += '\n';
+    }
+    if (belum > 0) {
+      t += '\n' + DIV + '\n';
+      t += '\uD83D\uDCA1 Lunasin semua sekaligus:\n';
+      t += '/lunas_semua ' + target;
     }
     if (t.length > 4000) t = t.substring(0, 3900) + '\n\n(terpotong...)';
     return ctx.reply(t);
@@ -605,6 +612,109 @@ bot.command('lunas', async (ctx) => {
     '\uD83D\uDCB0 Status   : LUNAS \u2705\n' +
     '\uD83D\uDCC5 Tanggal  : ' + formatDate(rowData[0])
   );
+});
+
+// ───────────────────────────────────────────────────────────
+// /lunas_semua [NAMA] — Lunasin semua entri belum lunas milik pengawal
+// ───────────────────────────────────────────────────────────
+bot.command('lunas_semua', async (ctx) => {
+  const userId = ctx.from.id;
+  if (!await isAdmin(userId)) {
+    return ctx.reply('\uD83D\uDEAB AKSES DITOLAK\nPerintah ini hanya untuk Admin.');
+  }
+  const args = (ctx.message.text || '').replace(/^\/lunas_semua\S*\s*/i, '').trim();
+  if (!args) {
+    return ctx.reply(
+      '\u2139\uFE0F Penggunaan:\n\n/lunas_semua REZA\n\n' +
+      'Akan menandai SEMUA rekap milik REZA\nyang belum lunas menjadi LUNAS.'
+    );
+  }
+  const target  = args.toUpperCase();
+  const allData = await getSheetValues(SHEET_KAWAL);
+  const targets = [];
+  for (let i = 1; i < allData.length; i++) {
+    if (
+      allData[i][0] &&
+      String(allData[i][3]).toUpperCase() === target &&
+      String(allData[i][4]).toUpperCase() !== 'LUNAS'
+    ) {
+      targets.push(i + 1); // nomor baris di sheet (1-indexed)
+    }
+  }
+  if (!targets.length) {
+    return ctx.reply(
+      '\u2705 Tidak ada yang perlu diubah!\n\n' +
+      '\uD83D\uDC64 ' + target + ' tidak punya rekap BELUM LUNAS.'
+    );
+  }
+  // Update semua baris secara paralel
+  await ctx.reply(
+    '\u23F3 Memproses ' + targets.length + ' rekap untuk *' + target + '*...\nMohon tunggu.'
+  );
+  const updates = targets.map(no => updateCell(SHEET_KAWAL, no, 'E', 'LUNAS'));
+  await Promise.all(updates);
+  ctx.reply(
+    '\u2705 SEMUA LUNAS!\n' + DIV + '\n\n' +
+    '\uD83D\uDC64 Pengawal : ' + target + '\n' +
+    '\uD83D\uDCB0 Diupdate : ' + targets.length + ' rekap\n' +
+    '\uD83D\uDD16 Baris    : #' + targets.join(', #') + '\n\n' +
+    '\u2705 Semua status sudah LUNAS!'
+  );
+});
+
+// ───────────────────────────────────────────────────────────
+// /cekplat [PLAT] — Riwayat lengkap suatu plat (Admin only)
+// ───────────────────────────────────────────────────────────
+bot.command('cekplat', async (ctx) => {
+  const userId = ctx.from.id;
+  if (!await isAdmin(userId)) {
+    return ctx.reply('\uD83D\uDEAB AKSES DITOLAK\nPerintah ini hanya untuk Admin.');
+  }
+  const args = (ctx.message.text || '').replace(/^\/cekplat\S*\s*/i, '').trim();
+  if (!args) {
+    return ctx.reply(
+      '\u2139\uFE0F Penggunaan:\n\n/cekplat BL 1234 AB\n\n' +
+      'Untuk melihat riwayat rekap plat tersebut.'
+    );
+  }
+  const platTarget = normalizePlat(args);
+  const allData    = await getSheetValues(SHEET_KAWAL);
+  const rows       = [];
+  for (let i = 1; i < allData.length; i++) {
+    if (allData[i][0] && normalizePlat(String(allData[i][1])) === platTarget) {
+      rows.push({ no: i + 1, d: allData[i] });
+    }
+  }
+  if (!rows.length) {
+    return ctx.reply(
+      '\uD83D\uDD0D PLAT TIDAK DITEMUKAN\n' + DIV + '\n\n' +
+      '\uD83D\uDE97 ' + platTarget + '\n\n' +
+      'Tidak ada riwayat rekap untuk plat ini.'
+    );
+  }
+  const lunas = rows.filter(r => String(r.d[4]).toUpperCase() === 'LUNAS').length;
+  const belum = rows.length - lunas;
+
+  // Cek Toke dari TABLE
+  const toke = await getTokeByPlat(platTarget);
+
+  let t = '\uD83D\uDE97 RIWAYAT PLAT: ' + platTarget + '\n' + DIV + '\n';
+  t += '\uD83D\uDC65 Toke     : ' + (toke || '-') + '\n';
+  t += '\uD83D\uDCE6 Total    : ' + rows.length + ' rekap\n';
+  t += '\u2705 Lunas   : ' + lunas + '  \u23F3 Belum: ' + belum + '\n';
+  t += DIV + '\n';
+  for (const r of rows) {
+    const ok = String(r.d[4]).toUpperCase() === 'LUNAS';
+    t += '\n' + (ok ? '\u2705' : '\u23F3') + ' #' + r.no + '\n';
+    t += '\uD83D\uDCC5 ' + formatDate(r.d[0]) + '\n';
+    t += '\uD83D\uDC64 Pengawal : ' + (r.d[3] || '-') + '\n';
+    t += '\uD83D\uDCB0 Status   : ' + (ok ? 'LUNAS' : 'BELUM LUNAS');
+    if (!ok) t += '  \u2192 /lunas ' + r.no;
+    t += '\n';
+  }
+  t += '\n' + DIV;
+  if (t.length > 4000) t = t.substring(0, 3900) + '\n\n(terpotong...)';
+  ctx.reply(t);
 });
 
 // ═══════════════════════════════════════════════════════════
