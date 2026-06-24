@@ -1,4 +1,4 @@
-﻿ 🚗 Bot Kawal Lintas v3.0
+ 🚗 Bot Kawal Lintas v3.0
 
 Bot Telegram untuk pencatatan rekap pengawalan kendaraan, terhubung ke Google Sheets.
 
