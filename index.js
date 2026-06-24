@@ -1,4 +1,4 @@
-require('dotenv').config();
+﻿equire('dotenv').config();
 const { Telegraf } = require('telegraf');
 const { google }   = require('googleapis');
 const express      = require('express');
