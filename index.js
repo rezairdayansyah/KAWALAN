@@ -487,6 +487,40 @@ app.get('/', (req, res) => {
   res.json({ status: 'ok', bot: 'Kawal Lintas v3.0', mode: WEBHOOK_URL ? 'webhook' : 'polling' });
 });
 
+// DEBUG endpoint sementara - untuk diagnosa Google Sheets access
+app.get('/debug/sheet', async (req, res) => {
+  try {
+    const credRaw = process.env.GOOGLE_CREDENTIALS || '';
+    let credParsed = {};
+    let credError = null;
+    try { credParsed = JSON.parse(credRaw); } catch(e) { credError = e.message; }
+
+    const masterData = await getSheetValues(SHEET_MASTER);
+    const tableData  = await getSheetValues(SHEET_TABLE);
+
+    res.json({
+      credentials: {
+        present: !!credRaw,
+        length: credRaw.length,
+        parseError: credError,
+        type: credParsed.type || 'N/A',
+        client_email: credParsed.client_email || 'N/A',
+      },
+      master: {
+        rowCount: masterData.length,
+        rows: masterData.slice(0, 8), // tampilkan 8 baris pertama
+      },
+      table: {
+        rowCount: tableData.length,
+        rows: tableData.slice(0, 5),
+      },
+      sheetId: SHEET_ID,
+    });
+  } catch(e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 if (WEBHOOK_URL) {
   const webhookPath = '/webhook/' + BOT_TOKEN;
   app.use(bot.webhookCallback(webhookPath));
